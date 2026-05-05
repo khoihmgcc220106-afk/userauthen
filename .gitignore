@@ -1,0 +1,17 @@
+# Các folder build
+[Bb]in/
+[Oo]bj/
+
+# File cấu hình cá nhân của Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# File cấu hình môi trường (nếu có)
+.env
+appsettings.Development.json
+
+# Docker rác
+.dockerignore
