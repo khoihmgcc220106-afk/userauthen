@@ -10,10 +10,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// 2. Cấu hình JWT Authentication (Để làm chức năng Login/Xác thực)
-// Chú ý: Key này phải giống hệt key trong Controller lúc tạo Token
+// 2. Cấu hình JWT Authentication
 var key = Encoding.UTF8.GetBytes("Key_Bi_Mat_Sieu_Cap_Cua_Tui_123456");
-
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -37,18 +35,34 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Cấu hình Pipeline xử lý HTTP
-if (app.Environment.IsDevelopment())
+// --- BƯỚC QUAN TRỌNG: TỰ ĐỘNG TẠO BẢNG DATABASE ---
+using (var scope = app.Services.CreateScope())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    try
+    {
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        db.Database.Migrate();
+        Console.WriteLine("--- Database Migration Successful! ---");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"--- Migration Error: {ex.Message} ---");
+    }
 }
 
-// Thứ tự app.Use... rất quan trọng, không được đảo lộn
-//app.UseHttpsRedirection();
+// --- CẤU HÌNH SWAGGER (ĐÃ ĐƯA RA NGOÀI ĐỂ RENDER HIỆN ĐƯỢC) ---
+app.UseSwagger();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "User Auth API V1");
+    c.RoutePrefix = "swagger"; // Giúp truy cập link /swagger là thấy ngay
+});
 
-app.UseAuthentication(); // Bật xác thực (Kiểm tra thẻ bài)
-app.UseAuthorization();  // Bật phân quyền
+// KHÔNG DÙNG HttpsRedirection trên Render gói Free
+// app.UseHttpsRedirection(); 
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapControllers();
 
