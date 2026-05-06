@@ -5,6 +5,7 @@ on:
     branches: [ "main" ]
     paths:
       - 'Backend/**'
+      - 'client/**' # Sửa từ Frontend thành client cho khớp với hình của bạn
 
 jobs:
   build-and-deploy:
