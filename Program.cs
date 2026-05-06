@@ -6,25 +6,44 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Đọc connection string từ ENV (Render) hoặc appsettings.json (local)
-var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
-Console.WriteLine($"--- DATABASE_URL from ENV: '{(string.IsNullOrEmpty(connectionString) ? "NOT FOUND" : "FOUND")}' ---");
-
-if (string.IsNullOrEmpty(connectionString))
+// ====== HÀM CONVERT postgresql:// URI → Npgsql connection string ======
+static string ConvertToNpgsqlConnectionString(string url)
 {
-    connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-    Console.WriteLine($"--- Fallback to appsettings: '{(string.IsNullOrEmpty(connectionString) ? "NOT FOUND" : "FOUND")}' ---");
+    if (!url.StartsWith("postgresql://") && !url.StartsWith("postgres://"))
+        return url;
+
+    var uri = new Uri(url);
+    var userInfo = uri.UserInfo.Split(':');
+    var username = userInfo[0];
+    var password = userInfo.Length > 1 ? userInfo[1] : "";
+    var host = uri.Host;
+    var port = uri.Port > 0 ? uri.Port : 5432;
+    var database = uri.AbsolutePath.TrimStart('/');
+
+    return $"Host={host};Port={port};Database={database};Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true";
 }
 
-if (string.IsNullOrEmpty(connectionString))
+// ====== ĐỌC CONNECTION STRING ======
+var rawConnectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
+Console.WriteLine($"--- DATABASE_URL from ENV: '{(string.IsNullOrEmpty(rawConnectionString) ? "NOT FOUND" : "FOUND")}' ---");
+
+if (string.IsNullOrEmpty(rawConnectionString))
+{
+    rawConnectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    Console.WriteLine($"--- Fallback to appsettings: '{(string.IsNullOrEmpty(rawConnectionString) ? "NOT FOUND" : "FOUND")}' ---");
+}
+
+if (string.IsNullOrEmpty(rawConnectionString))
     throw new InvalidOperationException("❌ Không tìm thấy connection string! Set DATABASE_URL trên Render.");
 
-Console.WriteLine($"--- Connection string starts with: '{connectionString[..Math.Min(30, connectionString.Length)]}...' ---");
+var connectionString = ConvertToNpgsqlConnectionString(rawConnectionString);
+Console.WriteLine("--- ✅ Connection string converted OK ---");
 
+// ====== CẤU HÌNH DATABASE ======
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// 2. Cấu hình JWT Authentication
+// ====== CẤU HÌNH JWT ======
 var key = Encoding.UTF8.GetBytes("Key_Bi_Mat_Sieu_Cap_Cua_Tui_123456");
 builder.Services.AddAuthentication(options =>
 {
@@ -49,7 +68,7 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// 3. Tự động migrate database
+// ====== TỰ ĐỘNG MIGRATE DATABASE ======
 using (var scope = app.Services.CreateScope())
 {
     try
@@ -64,6 +83,7 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// ====== SWAGGER ======
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
@@ -71,6 +91,7 @@ app.UseSwaggerUI(c =>
     c.RoutePrefix = "swagger";
 });
 
+// ====== MIDDLEWARE ======
 app.UseAuthentication();
 app.UseAuthorization();
 
