@@ -6,9 +6,13 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Cấu hình Database (PostgreSQL)
+// 1. Đọc connection string: ưu tiên DATABASE_URL (Render), fallback về appsettings.json
+var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
+    ?? builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException("No database connection string found!");
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(connectionString));
 
 // 2. Cấu hình JWT Authentication
 var key = Encoding.UTF8.GetBytes("Key_Bi_Mat_Sieu_Cap_Cua_Tui_123456");
