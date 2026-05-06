@@ -3,6 +3,7 @@ name: Backend CD Pipeline
 on:
   push:
     branches: [ "main" ]
+    # Chỉ chạy khi có thay đổi trong code Backend
     paths:
       - 'Backend/**'
 
@@ -23,11 +24,19 @@ jobs:
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
       with:
-        # Quan trọng: Đứng từ Root nhảy vào Backend để lấy ngữ cảnh build
+        # Nhảy vào folder Backend để lấy code và Dockerfile
         context: ./Backend 
         file: ./Backend/Dockerfile 
         push: true
+        # Đảm bảo tên Image này khớp với tên bạn khai báo trên Render (Docker Image Name)
         tags: ${{ secrets.DOCKER_USERNAME }}/mern-backend:latest
 
     - name: Trigger Render Deploy
-      run: curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK }}
+      # Chỉ chạy bước này nếu Secret RENDER_DEPLOY_HOOK đã được cấu hình
+      if: success()
+      run: |
+        if [ -z "${{ secrets.RENDER_DEPLOY_HOOK }}" ]; then
+          echo "❌ Error: RENDER_DEPLOY_HOOK is missing in GitHub Secrets!"
+          exit 1
+        fi
+        curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK }}
