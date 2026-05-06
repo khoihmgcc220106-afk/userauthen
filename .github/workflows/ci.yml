@@ -1,15 +1,29 @@
 name: Backend CI
+
 on:
+  push:
+    branches: [ "develop" ]
+    paths:
+      - 'Backend/**' # Chỉ chạy khi có thay đổi trong folder Backend
   pull_request:
-    branches: [ develop ]
+    branches: [ "develop" ]
+    paths:
+      - 'Backend/**'
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-      - name: Build
-        run: dotnet build
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+
+    - name: Restore dependencies
+      run: dotnet restore ./Backend/UserService.Api.sln # Trỏ vào file sln trong folder Backend
+
+    - name: Build
+      run: dotnet build ./Backend/UserService.Api.sln --no-restore
