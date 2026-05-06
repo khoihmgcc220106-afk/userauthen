@@ -4,12 +4,12 @@ on:
   push:
     branches: [ "develop", "main" ]
     paths:
-      - 'Backend/**' # Chỉ chạy khi có thay đổi trong folder Backend
+      - 'Backend/**'
+      - 'client/**'
   pull_request:
     branches: [ "develop" ]
     paths:
       - 'Backend/**'
-      - 'client/**' # Sửa từ Frontend thành client cho khớp với hình của bạn
 
 jobs:
   build-test:
@@ -21,10 +21,11 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: 8.0.x # Đảm bảo đúng version .NET bạn đang dùng
+        dotnet-version: 8.0.x 
 
     - name: Restore dependencies
-      run: dotnet restore ./Backend/*.sln # Tự động tìm file solution trong folder Backend
+      # Robot sẽ vào folder Backend để tìm file .sln hoặc .csproj
+      run: dotnet restore ./Backend/*.csproj 
 
     - name: Build
-      run: dotnet build ./Backend/*.sln --no-restore
+      run: dotnet build ./Backend/*.csproj --no-restore

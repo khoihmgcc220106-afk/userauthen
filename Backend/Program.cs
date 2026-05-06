@@ -6,6 +6,17 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ====== 1. CẤU HÌNH CORS (PHẢI TRƯỚC builder.Build) ======
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()   // Cho phép tất cả các nguồn (Vue, React, v.v.)
+              .AllowAnyMethod()   // Cho phép tất cả GET, POST, PUT, DELETE
+              .AllowAnyHeader();  // Cho phép tất cả Header (bao gồm cả Authorization)
+    });
+});
+
 // ====== HÀM CONVERT postgresql:// URI → Npgsql connection string ======
 static string ConvertToNpgsqlConnectionString(string url)
 {
@@ -25,19 +36,15 @@ static string ConvertToNpgsqlConnectionString(string url)
 
 // ====== ĐỌC CONNECTION STRING ======
 var rawConnectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
-Console.WriteLine($"--- DATABASE_URL from ENV: '{(string.IsNullOrEmpty(rawConnectionString) ? "NOT FOUND" : "FOUND")}' ---");
-
 if (string.IsNullOrEmpty(rawConnectionString))
 {
     rawConnectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-    Console.WriteLine($"--- Fallback to appsettings: '{(string.IsNullOrEmpty(rawConnectionString) ? "NOT FOUND" : "FOUND")}' ---");
 }
 
 if (string.IsNullOrEmpty(rawConnectionString))
-    throw new InvalidOperationException("❌ Không tìm thấy connection string! Set DATABASE_URL trên Render.");
+    throw new InvalidOperationException("❌ Không tìm thấy connection string!");
 
 var connectionString = ConvertToNpgsqlConnectionString(rawConnectionString);
-Console.WriteLine("--- ✅ Connection string converted OK ---");
 
 // ====== CẤU HÌNH DATABASE ======
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
@@ -68,6 +75,10 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
+// ====== 2. SỬ DỤNG CORS (THỨ TỰ RẤT QUAN TRỌNG) ======
+// Phải đặt UseCors TRƯỚC UseAuthentication và UseAuthorization
+app.UseCors("AllowAll"); 
+
 // ====== TỰ ĐỘNG MIGRATE DATABASE ======
 using (var scope = app.Services.CreateScope())
 {
@@ -75,7 +86,6 @@ using (var scope = app.Services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         db.Database.Migrate();
-        Console.WriteLine("--- ✅ Database Migration Successful! ---");
     }
     catch (Exception ex)
     {
