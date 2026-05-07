@@ -1,23 +1,28 @@
 using Microsoft.EntityFrameworkCore;
-using UserService.Api.Data;
+using UserService.Api.Data; // Đảm bảo namespace này khớp với project của bạn
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ====== 1. CẤU HÌNH CORS (PHẢI TRƯỚC builder.Build) ======
+// ============================================================
+// 1. CẤU HÌNH CORS (Cho phép Frontend từ Vercel truy cập)
+// ============================================================
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
     {
-        policy.AllowAnyOrigin()   // Cho phép tất cả các nguồn (Vue, React, v.v.)
-              .AllowAnyMethod()   // Cho phép tất cả GET, POST, PUT, DELETE
-              .AllowAnyHeader();  // Cho phép tất cả Header (bao gồm cả Authorization)
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
     });
 });
 
-// ====== HÀM CONVERT postgresql:// URI → Npgsql connection string ======
+// ============================================================
+// 2. HÀM CHUYỂN ĐỔI DATABASE URL (Dành cho Render PostgreSQL)
+// ============================================================
 static string ConvertToNpgsqlConnectionString(string url)
 {
     if (!url.StartsWith("postgresql://") && !url.StartsWith("postgres://"))
@@ -34,24 +39,23 @@ static string ConvertToNpgsqlConnectionString(string url)
     return $"Host={host};Port={port};Database={database};Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true";
 }
 
-// ====== ĐỌC CONNECTION STRING ======
-var rawConnectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
-if (string.IsNullOrEmpty(rawConnectionString))
-{
-    rawConnectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-}
+// Đọc Connection String từ Environment (Render) hoặc AppSettings (Local)
+var rawConnectionString = Environment.GetEnvironmentVariable("DATABASE_URL") 
+                         ?? builder.Configuration.GetConnectionString("DefaultConnection");
 
 if (string.IsNullOrEmpty(rawConnectionString))
-    throw new InvalidOperationException("❌ Không tìm thấy connection string!");
+    throw new InvalidOperationException("❌ Connection string 'DATABASE_URL' not found!");
 
 var connectionString = ConvertToNpgsqlConnectionString(rawConnectionString);
 
-// ====== CẤU HÌNH DATABASE ======
+// Cấu hình DbContext với PostgreSQL
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// ====== CẤU HÌNH JWT ======
-var key = Encoding.UTF8.GetBytes("Key_Bi_Mat_Sieu_Cap_Cua_Tui_123456");
+// ============================================================
+// 3. CẤU HÌNH AUTHENTICATION & JWT
+// ============================================================
+var key = Encoding.UTF8.GetBytes("Key_Bi_Mat_Sieu_Cap_Cua_Tui_123456"); // Phải khớp với key lúc tạo Token
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -71,21 +75,67 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+
+// ============================================================
+// 4. CẤU HÌNH SWAGGER (CÓ NÚT AUTHORIZE ĐỂ NHẬP TOKEN)
+// ============================================================
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo { 
+        Title = "Advanced Microservices API", 
+        Version = "v1",
+        Description = "Hệ thống Auth & URL Shortener tích hợp"
+    });
+
+    // Định nghĩa loại bảo mật JWT cho Swagger
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Dán Token của bạn vào đây (Chỉ cần mã JWT, không cần chữ 'Bearer' vì hệ thống tự thêm)"
+    });
+
+    // Bắt Swagger áp dụng Token cho các request
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
+            },
+            new string[] {}
+        }
+    });
+});
 
 var app = builder.Build();
 
-// ====== 2. SỬ DỤNG CORS (THỨ TỰ RẤT QUAN TRỌNG) ======
-// Phải đặt UseCors TRƯỚC UseAuthentication và UseAuthorization
-app.UseCors("AllowAll"); 
+// ============================================================
+// 5. CẤU HÌNH MIDDLEWARE (THỨ TỰ LÀ QUAN TRỌNG NHẤT)
+// ============================================================
 
-// ====== TỰ ĐỘNG MIGRATE DATABASE ======
+// 1. Dùng Swagger trước
+app.UseSwagger();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Microservices API V1");
+    c.RoutePrefix = "swagger"; // Truy cập link: /swagger
+});
+
+// 2. Dùng CORS (Phải trước Auth)
+app.UseCors("AllowAll");
+
+// 3. Tự động Migrate Database khi khởi chạy
 using (var scope = app.Services.CreateScope())
 {
     try
     {
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         db.Database.Migrate();
+        Console.WriteLine("✅ Database Migration Successful!");
     }
     catch (Exception ex)
     {
@@ -93,17 +143,9 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-// ====== SWAGGER ======
-app.UseSwagger();
-app.UseSwaggerUI(c =>
-{
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "User Auth API V1");
-    c.RoutePrefix = "swagger";
-});
-
-// ====== MIDDLEWARE ======
-app.UseAuthentication();
-app.UseAuthorization();
+// 4. Các Middleware xử lý request
+app.UseAuthentication(); // Xác thực xem bạn là ai
+app.UseAuthorization();  // Kiểm tra bạn có quyền làm gì
 
 app.MapControllers();
 
